@@ -1,11 +1,14 @@
-from django.contrib import admin
-from django.urls import path, include
-from rest_framework.routers import DefaultRouter
-
-router = DefaultRouter()
+from django.urls import path
+from .views import (
+    PasswordResetRequestView,
+    PasswordResetResendView,
+    PasswordResetVerifyCodeView,
+    PasswordResetConfirmView,
+)
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
-    path('api/', include(router.urls)),
+    path("password-reset/request/", PasswordResetRequestView.as_view(), name="password-reset-request"),
+    path("password-reset/resend/", PasswordResetResendView.as_view(), name="password-reset-resend"),
+    path("password-reset/verify-code/", PasswordResetVerifyCodeView.as_view(), name="password-reset-verify-code"),
+    path("password-reset/confirm/", PasswordResetConfirmView.as_view(), name="password-reset-confirm"),
 ]
-
