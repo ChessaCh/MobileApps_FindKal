@@ -1,19 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'services/api_service.dart';
 
 class EnterCodePage extends StatefulWidget {
-  const EnterCodePage({super.key});
+  final String email;
+
+  const EnterCodePage({super.key, required this.email});
 
   @override
   State<EnterCodePage> createState() => _EnterCodePageState();
 }
 
 class _EnterCodePageState extends State<EnterCodePage> {
-  final List<TextEditingController> _codeControllers = List.generate(
-    5,
-    (_) => TextEditingController(),
-  );
-  final List<FocusNode> _focusNodes = List.generate(5, (_) => FocusNode());
+  final List<TextEditingController> _codeControllers =
+      List.generate(6, (_) => TextEditingController());
+  final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
+
+  bool _resending = false;
+  bool _verifying = false;
 
   @override
   void dispose() {
@@ -26,11 +30,98 @@ class _EnterCodePageState extends State<EnterCodePage> {
     super.dispose();
   }
 
+  Future<void> _onVerifyTapped() async {
+    final code = _codeControllers.map((c) => c.text).join();
+    if (code.length < 6) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Masukkan 6 digit kode terlebih dahulu.',
+              style: TextStyle(fontFamily: 'Inter')),
+          backgroundColor: const Color(0xFF4A4A4A),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.only(bottom: 20, left: 24, right: 24),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _verifying = true);
+    try {
+      await ApiService.verifyEmailCode(widget.email, code);
+      if (!mounted) return;
+      Navigator.pop(context, true); // return verified=true to register.dart
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message, style: const TextStyle(fontFamily: 'Inter')),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.only(bottom: 20, left: 24, right: 24),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Terjadi kesalahan. Coba lagi.',
+              style: TextStyle(fontFamily: 'Inter')),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.only(bottom: 20, left: 24, right: 24),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _verifying = false);
+    }
+  }
+
   void _onCodeChanged(String value, int index) {
-    if (value.isNotEmpty && index < 4) {
+    if (value.isNotEmpty && index < 5) {
       _focusNodes[index + 1].requestFocus();
     } else if (value.isEmpty && index > 0) {
       _focusNodes[index - 1].requestFocus();
+    }
+  }
+
+  Future<void> _onResendTapped() async {
+    if (_resending) return;
+    setState(() => _resending = true);
+    try {
+      await ApiService.resendVerificationEmail(widget.email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            "Kode baru sudah dikirim ulang melalui email.\nSegera cek inbox kamu",
+            style: TextStyle(fontFamily: 'Inter', fontSize: 14),
+          ),
+          backgroundColor: const Color(0xFF4A4A4A),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.only(bottom: 20, left: 24, right: 24),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text(
+            "Gagal mengirim ulang kode. Coba lagi.",
+            style: TextStyle(fontFamily: 'Inter', fontSize: 14),
+          ),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.only(bottom: 20, left: 24, right: 24),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _resending = false);
     }
   }
 
@@ -72,9 +163,9 @@ class _EnterCodePageState extends State<EnterCodePage> {
               ),
             ),
             const SizedBox(height: 8),
-            const Text(
-              "Kami telah mengirim kode melalui SMS. Masukkan kode untuk konfirmasi akun",
-              style: TextStyle(
+            Text(
+              "Kami telah mengirim kode melalui email ke ${widget.email}. Masukkan kode untuk konfirmasi akun",
+              style: const TextStyle(
                 fontFamily: 'Inter',
                 fontSize: 14,
                 color: Colors.grey,
@@ -82,13 +173,13 @@ class _EnterCodePageState extends State<EnterCodePage> {
             ),
             const SizedBox(height: 30),
 
-            // Code Input Fields
+            // 6-digit Code Input Fields
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: List.generate(
-                5,
+                6,
                 (index) => SizedBox(
-                  width: 55,
+                  width: 46,
                   height: 65,
                   child: TextField(
                     controller: _codeControllers[index],
@@ -139,37 +230,23 @@ class _EnterCodePageState extends State<EnterCodePage> {
                   ),
                 ),
                 InkWell(
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: const Text(
-                          "Kode baru sudah dikirim ulang melalui SMS.\nSegera cek inbox kamu",
-                          style: TextStyle(fontFamily: 'Inter', fontSize: 14),
+                  onTap: _resending ? null : _onResendTapped,
+                  child: _resending
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF4AA5A6)),
+                        )
+                      : const Text(
+                          "Kirim kode baru",
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 14,
+                            color: Color(0xFF4AA5A6),
+                            decoration: TextDecoration.underline,
+                            decorationColor: Color(0xFF4AA5A6),
+                          ),
                         ),
-                        backgroundColor: const Color(0xFF4A4A4A),
-                        behavior: SnackBarBehavior.floating,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        margin: const EdgeInsets.only(
-                          bottom: 20,
-                          left: 24,
-                          right: 24,
-                        ),
-                        duration: const Duration(seconds: 3),
-                      ),
-                    );
-                  },
-                  child: const Text(
-                    "Kirim kode baru",
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 14,
-                      color: Color(0xFF4AA5A6),
-                      decoration: TextDecoration.underline,
-                      decorationColor: Color(0xFF4AA5A6),
-                    ),
-                  ),
                 ),
               ],
             ),
@@ -181,9 +258,7 @@ class _EnterCodePageState extends State<EnterCodePage> {
               width: double.infinity,
               height: 48,
               child: ElevatedButton(
-                onPressed: () {
-                  Navigator.pushNamed(context, '/create-new-password');
-                },
+                onPressed: _verifying ? null : _onVerifyTapped,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFFA5D1D6),
                   foregroundColor: Colors.white,
@@ -192,14 +267,20 @@ class _EnterCodePageState extends State<EnterCodePage> {
                   ),
                   elevation: 0,
                 ),
-                child: const Text(
-                  "Lanjutkan",
-                  style: TextStyle(
-                    fontFamily: 'Inter',
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                child: _verifying
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Text(
+                        "Lanjutkan",
+                        style: TextStyle(
+                          fontFamily: 'Inter',
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
           ],

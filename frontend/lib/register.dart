@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'enter_code.dart';
 import 'register_address.dart';
+import 'services/api_service.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -12,160 +14,76 @@ class _RegisterPageState extends State<RegisterPage> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
-  final TextEditingController _phoneController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
 
-  void _showVerifyDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return Dialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          backgroundColor: Colors.white,
-          insetPadding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Expanded(
-                      child: Text(
-                        "Verify your phone number",
-                        style: TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    InkWell(
-                      onTap: () => Navigator.pop(context),
-                      child: const Icon(Icons.close, color: Colors.black),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: RichText(
-                    text: TextSpan(
-                      style: const TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 14,
-                        color: Colors.black,
-                      ),
-                      children: [
-                        const TextSpan(
-                          text: "Enter the 6-digit code send to you at ",
-                        ),
-                        TextSpan(
-                          text:
-                              "+62 ${_phoneController.text.isEmpty ? '80000000000' : _phoneController.text}",
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                // 6 Digit OTP fields
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: List.generate(6, (index) {
-                    return Expanded(
-                      child: Container(
-                        margin: const EdgeInsets.symmetric(horizontal: 4),
-                        height: 55,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                        child: TextField(
-                          textAlign: TextAlign.center,
-                          keyboardType: TextInputType.number,
-                          maxLength: 1,
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                          ),
-                          decoration: const InputDecoration(
-                            border: InputBorder.none,
-                            counterText: "",
-                          ),
-                          onChanged: (value) {
-                            if (value.isNotEmpty && index < 5) {
-                              FocusScope.of(context).nextFocus();
-                            } else if (value.isEmpty && index > 0) {
-                              FocusScope.of(context).previousFocus();
-                            }
-                          },
-                        ),
-                      ),
-                    );
-                  }),
-                ),
-                const SizedBox(height: 24),
-                // Resend text
-                RichText(
-                  text: const TextSpan(
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 13,
-                      color: Colors.black,
-                    ),
-                    children: [
-                      TextSpan(text: "Didn't get the code? "),
-                      TextSpan(
-                        text: "Resend code",
-                        style: TextStyle(
-                          color: Color(0xFF4AA5A6),
-                          decoration: TextDecoration.underline,
-                        ),
-                      ),
-                      TextSpan(text: " in 00:30"),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-                // Verify button
-                SizedBox(
-                  width: 120,
-                  height: 40,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFA5D1D6),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      elevation: 0,
-                    ),
-                    child: const Text(
-                      "Verify",
-                      style: TextStyle(
-                        fontFamily: 'Inter',
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+  bool _sendingOtp = false;
+  bool _isEmailVerified = false;
+
+  Future<void> _onVerifyTapped() async {
+    final email = _emailController.text.trim();
+    if (email.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Masukkan email terlebih dahulu.', style: TextStyle(fontFamily: 'Inter')),
+          backgroundColor: const Color(0xFF4A4A4A),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.only(bottom: 20, left: 24, right: 24),
+        ),
+      );
+      return;
+    }
+
+    setState(() => _sendingOtp = true);
+    try {
+      await ApiService.sendVerificationEmail(email);
+      if (!mounted) return;
+      final verified = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(builder: (_) => EnterCodePage(email: email)),
+      );
+      if (verified == true) {
+        setState(() => _isEmailVerified = true);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text(
+              'Email berhasil diverifikasi! ✓',
+              style: TextStyle(fontFamily: 'Inter'),
             ),
+            backgroundColor: const Color(0xFF4AA5A6),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            margin: const EdgeInsets.only(bottom: 20, left: 24, right: 24),
+            duration: const Duration(seconds: 3),
           ),
         );
-      },
-    );
+      }
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e.message, style: const TextStyle(fontFamily: 'Inter')),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.only(bottom: 20, left: 24, right: 24),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Terjadi kesalahan. Coba lagi.', style: TextStyle(fontFamily: 'Inter')),
+          backgroundColor: Colors.redAccent,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          margin: const EdgeInsets.only(bottom: 20, left: 24, right: 24),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _sendingOtp = false);
+    }
   }
 
   @override
@@ -306,9 +224,9 @@ class _RegisterPageState extends State<RegisterPage> {
               ),
               const SizedBox(height: 16),
 
-              // Phone Number Field
+              // Email Field + Verify Button
               const Text(
-                "Nomor telepon",
+                "Email",
                 style: TextStyle(
                   fontFamily: 'Inter',
                   fontSize: 14,
@@ -325,43 +243,13 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
                 child: Row(
                   children: [
-                    // Country Code Dropdown Fake
-                    Container(
-                      height: 40,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      decoration: BoxDecoration(
-                        color: Colors.grey.shade200,
-                        borderRadius: const BorderRadius.only(
-                          topLeft: Radius.circular(29),
-                          bottomLeft: Radius.circular(29),
-                        ),
-                      ),
-                      child: Row(
-                        children: const [
-                          Text(
-                            "+62",
-                            style: TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 14,
-                              color: Colors.black,
-                            ),
-                          ),
-                          SizedBox(width: 4),
-                        ],
-                      ),
-                    ),
-                    // Divider
-                    Container(width: 1, color: Colors.grey.shade400),
-                    // Phone Number Input
+                    // Email Input
                     Expanded(
                       child: TextField(
-                        controller: _phoneController,
-                        keyboardType: TextInputType.phone,
+                        controller: _emailController,
+                        keyboardType: TextInputType.emailAddress,
                         textAlignVertical: TextAlignVertical.center,
-                        style: const TextStyle(
-                          fontFamily: 'Inter',
-                          fontSize: 14,
-                        ),
+                        style: const TextStyle(fontFamily: 'Inter', fontSize: 14),
                         decoration: const InputDecoration(
                           border: InputBorder.none,
                           contentPadding: EdgeInsets.symmetric(
@@ -376,9 +264,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     Padding(
                       padding: const EdgeInsets.only(right: 6.0),
                       child: InkWell(
-                        onTap: () {
-                          _showVerifyDialog(context);
-                        },
+                        onTap: _sendingOtp ? null : _onVerifyTapped,
                         borderRadius: BorderRadius.circular(15),
                         child: Container(
                           padding: const EdgeInsets.symmetric(
@@ -393,15 +279,21 @@ class _RegisterPageState extends State<RegisterPage> {
                               width: 0.5,
                             ),
                           ),
-                          child: const Text(
-                            "verify",
-                            style: TextStyle(
-                              fontFamily: 'Inter',
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                              color: Colors.black,
-                            ),
-                          ),
+                          child: _sendingOtp
+                              ? const SizedBox(
+                                  width: 14,
+                                  height: 14,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Text(
+                                  "verify",
+                                  style: TextStyle(
+                                    fontFamily: 'Inter',
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                    color: Colors.black,
+                                  ),
+                                ),
                         ),
                       ),
                     ),
@@ -409,20 +301,28 @@ class _RegisterPageState extends State<RegisterPage> {
                 ),
               ),
 
-              const Spacer(), // Use Spacer to push buttons to the bottom without scrolling
-              // Button Selanjutnya
+              const Spacer(),
+
+              // Button Selanjutnya — only enabled after email is verified
               SizedBox(
                 width: double.infinity,
                 height: 48,
                 child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => const RegisterAddressPage(),
-                      ),
-                    );
-                  },
+                  onPressed: _isEmailVerified
+                      ? () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => RegisterAddressPage(
+                                name: _nameController.text.trim(),
+                                username: _usernameController.text.trim(),
+                                password: _passwordController.text,
+                                email: _emailController.text.trim(),
+                              ),
+                            ),
+                          );
+                        }
+                      : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFFA5D1D6),
                     foregroundColor: Colors.white,
@@ -448,7 +348,7 @@ class _RegisterPageState extends State<RegisterPage> {
               Center(
                 child: InkWell(
                   onTap: () {
-                    Navigator.pop(context); // Go back to login
+                    Navigator.pop(context);
                   },
                   hoverColor: Colors.transparent,
                   highlightColor: Colors.transparent,
